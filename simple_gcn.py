@@ -20,6 +20,50 @@ for node, data in G.nodes(data=True):
     if 'label' not in data:
         data['label'] = -1
 
+
+# # To get the degree of all nodes, you can iterate over the nodes
+# for node in G.nodes():
+#     print(f"The degree of node {node} is: {G.degree(node)}")
+
+# Find isolated nodes
+isolated_nodes = list(nx.isolates(G))
+
+# Print the number of isolated nodes
+print(f"The number of isolated nodes is: {len(isolated_nodes)}")
+print(isolated_nodes)
+
+
+
+label_to_check = -1
+
+# Find nodes with the specific label and check their degrees
+nodes_with_label = [node for node, data in G.nodes(data=True) if data.get('label') == label_to_check]
+
+# Get the degrees of these nodes
+degrees = {node: G.degree(node) for node in nodes_with_label}
+
+print(f"The degrees of nodes with label '{label_to_check}' are: {degrees}")
+
+# Define the labels to check
+label_to_check = -1
+target_label = 1
+
+# Find nodes with the specific label
+nodes_with_label = [node for node, data in G.nodes(data=True) if data.get('label') == label_to_check]
+
+# Count the edges to nodes with the target label
+total_edge = 0
+edge_counts = {}
+for node in nodes_with_label:
+    count = 0
+    for neighbor in G.neighbors(node):
+        if G.nodes[neighbor].get('label') == target_label:
+            count += 1
+            total_edge +=1 
+    edge_counts[node] = count
+
+print(f"The number of edges between nodes with label '{label_to_check}' and nodes with label '{target_label}' are: {edge_counts}")
+print(total_edge)
 # Assuming node labels are stored in node attribute 'label' where 0 represents ID and 1 represents OOD
 ID_nodes = [node for node, data in G.nodes(data=True) if data['label'] == 0]
 OOD_nodes = [node for node, data in G.nodes(data=True) if data['label'] == 1]
@@ -51,10 +95,10 @@ for i, (node, data) in enumerate(subG.nodes(data=True)):
 
     if data['type'] != 'topic':
         node_mask.append(True)
-        if data['label'] == 0 and id_counter <= 499:
+        if data['label'] == 0 and id_counter <= 2000:
             train_mask.append(True)
             id_counter +=1
-        elif data['label'] == 1 and ood_counter <= 149:
+        elif data['label'] == 1 and ood_counter <= 2000:
             train_mask.append(True)
             ood_counter +=1
         else:
@@ -90,9 +134,10 @@ data = Data(x=x, edge_index=edge_index, y=y)
 class GCN(torch.nn.Module):
     def __init__(self, out_channels):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(data.num_node_features, 16)
-        self.conv2 = GCNConv(16, 8)
-        self.conv3 = GCNConv(8, out_channels)
+        self.conv1 = GCNConv(data.num_node_features, 32)
+        self.conv2 = GCNConv(32, 16)
+        self.linear1 = torch.nn.Linear(16, 8)
+        self.linear2 = torch.nn.Linear(8, out_channels)
         self.dropout = torch.nn.Dropout(p=0.2)
 
     def forward(self, data):
@@ -101,7 +146,9 @@ class GCN(torch.nn.Module):
         x = self.dropout(x)
         x = F.relu(self.conv2(x, edge_index))
         x = self.dropout(x)
-        x = F.sigmoid(self.conv3(x, edge_index))
+        x = F.relu(self.linear1(x))
+        x = self.dropout(x)
+        x = F.sigmoid(self.linear2(x))
         return x
 
 # Initialize the model
@@ -111,7 +158,7 @@ model = GCN(out_channels=1)  # Assuming 2 classes for labels
 criterion = torch.nn.BCELoss()
 
 # Optimizer (using Adam here, but you can use others like SGD)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 def train():
     model.train()  # Set the model to training mode
     optimizer.zero_grad()  # Clear gradients to ready for a new optimization step
@@ -144,6 +191,7 @@ node_index = []  # to keep track of node indices that are not 'topic'
 train_mask = []
 node_mask = []
 test_mask = []
+isolated_mask = []
 ood_counter = 0
 id_counter = 0
 for i, (node, data) in enumerate(G.nodes(data=True)):
@@ -159,6 +207,11 @@ for i, (node, data) in enumerate(G.nodes(data=True)):
         node_mask.append(False)
         node_labels.append(3)  # Assume 'labels' is an integer 0 or 1
 
+    if node in isolated_nodes:
+        isolated_mask.append(True)
+    else:
+        isolated_mask.append(False)
+
     node_index.append(i)
 #print(np.array(node_features))
 # Convert the list of index pairs into a PyTorch tensor
@@ -169,8 +222,8 @@ y = torch.tensor(node_labels, dtype=torch.float)
 # Create the PyTorch Geometric data object
 data_big = Data(x=x, edge_index=edge_index, y=y)
 
-y_true = data_big.y[node_mask].squeeze()
-y_pred = (model(data_big)[node_mask].squeeze() > 0.5) + 0
+y_true = data_big.y[isolated_mask].squeeze()
+y_pred = (model(data_big)[isolated_mask].squeeze() > 0.5) + 0
 #print(data.y.squeeze())
 #print(model(data).squeeze())
 confusion_matrix = confusion_matrix(y_true, y_pred)
