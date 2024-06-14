@@ -7,6 +7,8 @@ import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
+
+
 # Load the graph
 G = nx.read_graphml('5000ID_2500OOD.graphml')
 
@@ -15,11 +17,6 @@ for node_id, node_data in G.nodes(data=True):
         # Convert string back to numpy array
         #print(node_data['type'], ":", len(node_data['embedding']))
         node_data['embedding'] = np.fromstring(node_data['embedding'], sep=',')
-
-for node, data in G.nodes(data=True):
-    if 'label' not in data:
-        data['label'] = -1
-
 
 # # To get the degree of all nodes, you can iterate over the nodes
 # for node in G.nodes():
@@ -30,8 +27,21 @@ isolated_nodes = list(nx.isolates(G))
 
 # Print the number of isolated nodes
 print(f"The number of isolated nodes is: {len(isolated_nodes)}")
-print(isolated_nodes)
+isolated_ood_nodes = [node for node in isolated_nodes if node[0] == "O"]
+print(isolated_ood_nodes)
 
+
+# Add edge on isolated nodes 
+isolate_node = "isolate_node"
+embedding = np.load('isolate_node.npy')
+G.add_node(isolate_node, type='topic', bipartite=0, embedding=embedding) 
+edges = [(isolate_node, node, 1) for node in isolated_ood_nodes]
+G.add_weighted_edges_from(edges)
+
+# Add label -1 for topic nodes and isolate one
+for node, data in G.nodes(data=True):
+    if 'label' not in data:
+        data['label'] = -1
 
 
 label_to_check = -1
@@ -70,9 +80,10 @@ OOD_nodes = [node for node, data in G.nodes(data=True) if data['label'] == 1]
 topic_nodes = [node for node, data in G.nodes(data=True) if data['label'] == -1]
 
 # Randomly sample 2500 ID nodes and 500 OOD nodes
-np.random.seed(42)  # For reproducibility
-selected_ID_nodes = np.random.choice(ID_nodes, 2500, replace=False)
-selected_OOD_nodes = np.random.choice(OOD_nodes, 500, replace=False)
+#np.random.seed(42)  # For reproducibility
+rng = np.random.default_rng()
+selected_ID_nodes = rng.choice(ID_nodes, 2500, replace=False)
+selected_OOD_nodes = rng.choice(OOD_nodes, 500, replace=False)
 
 # Combine the selected nodes
 selected_nodes = np.concatenate((selected_ID_nodes, selected_OOD_nodes, topic_nodes))
@@ -95,10 +106,10 @@ for i, (node, data) in enumerate(subG.nodes(data=True)):
 
     if data['type'] != 'topic':
         node_mask.append(True)
-        if data['label'] == 0 and id_counter <= 2000:
+        if data['label'] == 0 and id_counter <= 500:
             train_mask.append(True)
             id_counter +=1
-        elif data['label'] == 1 and ood_counter <= 2000:
+        elif data['label'] == 1 and ood_counter <= 100:
             train_mask.append(True)
             ood_counter +=1
         else:
@@ -134,21 +145,21 @@ data = Data(x=x, edge_index=edge_index, y=y)
 class GCN(torch.nn.Module):
     def __init__(self, out_channels):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(data.num_node_features, 32)
-        self.conv2 = GCNConv(32, 16)
+        self.conv1 = GCNConv(data.num_node_features, 16)
+        self.conv2 = GCNConv(16, out_channels)
         self.linear1 = torch.nn.Linear(16, 8)
         self.linear2 = torch.nn.Linear(8, out_channels)
-        self.dropout = torch.nn.Dropout(p=0.2)
+        self.dropout = torch.nn.Dropout(p=0.3)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         x = F.relu(self.conv1(x, edge_index))
         x = self.dropout(x)
-        x = F.relu(self.conv2(x, edge_index))
-        x = self.dropout(x)
-        x = F.relu(self.linear1(x))
-        x = self.dropout(x)
-        x = F.sigmoid(self.linear2(x))
+        x = F.sigmoid(self.conv2(x, edge_index))
+        # x = self.dropout(x)
+        # x = F.relu(self.linear1(x))
+        # x = self.dropout(x)
+        # x = F.sigmoid(self.linear2(x))
         return x
 
 # Initialize the model
@@ -222,8 +233,8 @@ y = torch.tensor(node_labels, dtype=torch.float)
 # Create the PyTorch Geometric data object
 data_big = Data(x=x, edge_index=edge_index, y=y)
 
-y_true = data_big.y[isolated_mask].squeeze()
-y_pred = (model(data_big)[isolated_mask].squeeze() > 0.5) + 0
+y_true = data_big.y[node_mask].squeeze()
+y_pred = (model(data_big)[node_mask].squeeze() > 0.5) + 0
 #print(data.y.squeeze())
 #print(model(data).squeeze())
 confusion_matrix = confusion_matrix(y_true, y_pred)
@@ -232,3 +243,28 @@ cm_display = ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display
 
 cm_display.plot()
 plt.show() 
+
+
+# Mapping nodes to confusion matrix results
+confusion_details = {
+    'true_label': [],
+    'pred_label': [],
+    'nodes': []
+}
+isolate_false_counter=0
+isolate_true_counter=0
+for true, pred, node in zip(y_true, y_pred, isolated_nodes):
+    confusion_details['true_label'].append(true)
+    confusion_details['pred_label'].append(pred)
+    confusion_details['nodes'].append(node)
+    if true != pred:
+        isolate_false_counter += 1
+    else:
+        isolate_true_counter +=1
+
+# Print detailed results
+for i in range(len(confusion_details['true_label'])):
+    print(f"Node: {confusion_details['nodes'][i]}, True Label: {confusion_details['true_label'][i]}, Predicted Label: {confusion_details['pred_label'][i]}")
+
+print("isolate rights: ", isolate_true_counter)
+print("isolate wrongs: ", isolate_false_counter)
