@@ -11,10 +11,6 @@ import matplotlib.pyplot as plt
 tokenizer = LongformerTokenizer.from_pretrained('allenai/longformer-base-4096')
 model = LongformerModel.from_pretrained('allenai/longformer-base-4096')
 model.eval()
-# # Load pre-trained BERT model and tokenizer
-# word_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-# word_model = BertModel.from_pretrained('bert-base-uncased')
-# word_model.eval()
 
 # Load corpus
 IMDB_data = pd.read_csv("C:/Users/ImDB/Desktop/uni/thesis/IMDB Dataset.csv")

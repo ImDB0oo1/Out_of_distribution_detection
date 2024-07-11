@@ -25,13 +25,14 @@ print(len(OOD_data))
 
 IMDB_data = pd.read_csv("IMDB Dataset.csv")
 
-corpus = IMDB_data['review'][0:5000].tolist()
-topics = ["watching", "episode", "movie", "film", "like", "good", "bad", "arts", "think", "horror", "action", "story", "theatrer", "filmmakers", "performance", "name"]
+corpus = IMDB_data['review'][0:5].tolist()
+#topics = ["watching", "episode", "movie", "film", "like", "good", "bad", "arts", "think", "horror", "action", "story", "theatrer", "filmmakers", "performance", "name"]
+topics = ["watching", "episode", "movie", "film", "arts", "story", "theatrer", "filmmakers", "name"]
 
 model = SentenceTransformer("multi-qa-MiniLM-L6-cos-v1")
 
 doc_embeddings = model.encode(corpus)
-OOD_embeddings = model.encode(OOD_data[0:2500])
+OOD_embeddings = model.encode(OOD_data[0:2])
 topic_embeddings = model.encode(topics)
 print(OOD_embeddings[0].shape)
 print(topic_embeddings[0].shape)
@@ -116,7 +117,7 @@ for i, doc_embedding in enumerate(OOD_embeddings):
     for similarity, j in top_4_similarities:
         G.add_edge(topics[j], f"OOD_doc{i}", weight=similarity)
 
-nx.write_graphml(G, '5000ID_2500OOD_4NNsfsgsg.graphml')
+#nx.write_graphml(G, '5000ID_2500OOD_4NNsfsgsg.graphml')
 
 # Plot graph
 plt.figure(figsize=(10,8))
