@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 # Load the graph
-G = nx.read_graphml('5000ID_2500OOD.graphml')
+G = nx.read_graphml('50000ID_11314OOD.graphml')
 
 for node_id, node_data in G.nodes(data=True):
     if 'embedding' in node_data:
@@ -82,8 +82,8 @@ topic_nodes = [node for node, data in G.nodes(data=True) if data['label'] == -1]
 # Randomly sample 2500 ID nodes and 500 OOD nodes
 #np.random.seed(42)  # For reproducibility
 rng = np.random.default_rng()
-selected_ID_nodes = rng.choice(ID_nodes, 2500, replace=False)
-selected_OOD_nodes = rng.choice(OOD_nodes, 500, replace=False)
+selected_ID_nodes = rng.choice(ID_nodes, 5000, replace=False)
+selected_OOD_nodes = rng.choice(OOD_nodes, 1000, replace=False)
 
 # Combine the selected nodes
 selected_nodes = np.concatenate((selected_ID_nodes, selected_OOD_nodes, topic_nodes))
@@ -180,7 +180,7 @@ def train():
     return loss
 
 # Example training for a number of epochs
-epochs = 1000
+epochs = 300
 for epoch in range(epochs):
     loss = train()
     print(f'Epoch {epoch+1}: Loss: {loss.item()}')
@@ -189,13 +189,13 @@ for epoch in range(epochs):
 
 # Convert lists to tensors
 # Collect all unique node identifiers
-unique_nodes = set(sum(G.edges(), ()))  # Flatten the list of tuples and convert to a set
-# Map each unique node to an index
-node_to_index = {node: idx for idx, node in enumerate(unique_nodes)}
-# Convert edges to indices
-edge_indices = [[node_to_index[src], node_to_index[dst]] for src, dst in G.edges()]
+# unique_nodes = set(sum(G.edges(), ()))  # Flatten the list of tuples and convert to a set
+# # Map each unique node to an index
+# node_to_index = {node: idx for idx, node in enumerate(unique_nodes)}
+# # Convert edges to indices
+# edge_indices = [[node_to_index[src], node_to_index[dst]] for src, dst in G.edges()]
 
-
+print("Finish")
 node_features = []
 node_labels = []
 node_index = []  # to keep track of node indices that are not 'topic'
@@ -224,7 +224,6 @@ for i, (node, data) in enumerate(G.nodes(data=True)):
         isolated_mask.append(False)
 
     node_index.append(i)
-#print(np.array(node_features))
 # Convert the list of index pairs into a PyTorch tensor
 edge_index = torch.tensor(edge_indices, dtype=torch.long).t().contiguous()
 x = torch.tensor(np.array(node_features), dtype=torch.float)
@@ -233,16 +232,30 @@ y = torch.tensor(node_labels, dtype=torch.float)
 # Create the PyTorch Geometric data object
 data_big = Data(x=x, edge_index=edge_index, y=y)
 
+# y_true = data.y[node_mask].squeeze()
+# y_pred = (model(data)[node_mask].squeeze() > 0.5) + 0
 y_true = data_big.y[node_mask].squeeze()
 y_pred = (model(data_big)[node_mask].squeeze() > 0.5) + 0
+
 #print(data.y.squeeze())
 #print(model(data).squeeze())
 confusion_matrix = confusion_matrix(y_true, y_pred)
+formatted_matrix = np.vectorize(lambda x: int(x))(confusion_matrix)
+cm_display = ConfusionMatrixDisplay(confusion_matrix = formatted_matrix, display_labels = ["ID", "OOD"])
 
-cm_display = ConfusionMatrixDisplay(confusion_matrix = confusion_matrix, display_labels = ["ID", "OOD"])
+# Plot the confusion matrix
+fig, ax = plt.subplots()
+cm_display.plot(ax=ax, values_format='d')
 
-cm_display.plot()
-plt.show() 
+# Manually set axis labels to avoid scientific notation
+ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x):d}'))
+ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{int(y):d}'))
+
+
+# Show the plot
+plt.show()
+# cm_display.plot()
+# plt.show() 
 
 
 # Mapping nodes to confusion matrix results
