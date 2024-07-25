@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
+from sklearn.metrics import roc_auc_score
 
 
 
@@ -180,7 +181,7 @@ def train():
     return loss
 
 # Example training for a number of epochs
-epochs = 300
+epochs = 600
 for epoch in range(epochs):
     loss = train()
     print(f'Epoch {epoch+1}: Loss: {loss.item()}')
@@ -235,11 +236,14 @@ data_big = Data(x=x, edge_index=edge_index, y=y)
 # y_true = data.y[node_mask].squeeze()
 # y_pred = (model(data)[node_mask].squeeze() > 0.5) + 0
 y_true = data_big.y[node_mask].squeeze()
-y_pred = (model(data_big)[node_mask].squeeze() > 0.5) + 0
-
+y_pred_prob = model(data_big)[node_mask].squeeze()
+y_pred_class = (y_pred_prob > 0.5) + 0
+# Compute the AUROC
+auroc = roc_auc_score(y_true.detach().numpy(), y_pred_prob.detach().numpy())
+print(f'AUROC: {auroc:.5f}')
 #print(data.y.squeeze())
 #print(model(data).squeeze())
-confusion_matrix = confusion_matrix(y_true, y_pred)
+confusion_matrix = confusion_matrix(y_true, y_pred_class)
 formatted_matrix = np.vectorize(lambda x: int(x))(confusion_matrix)
 cm_display = ConfusionMatrixDisplay(confusion_matrix = formatted_matrix, display_labels = ["ID", "OOD"])
 
@@ -266,7 +270,7 @@ confusion_details = {
 }
 isolate_false_counter=0
 isolate_true_counter=0
-for true, pred, node in zip(y_true, y_pred, isolated_nodes):
+for true, pred, node in zip(y_true, y_pred_class, isolated_nodes):
     confusion_details['true_label'].append(true)
     confusion_details['pred_label'].append(pred)
     confusion_details['nodes'].append(node)
